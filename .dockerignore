@@ -1,0 +1,16 @@
+.env
+.git
+.gitignore
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+node_modules
+data/
+frontend/dist/
+frontend/node_modules/
+frontend/public/data/
+orchestration/
+conversion.json
+conversations.example.json
+sources.yaml

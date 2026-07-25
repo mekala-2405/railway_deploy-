@@ -19,18 +19,21 @@ _retriever = None
 _embeddings = None
 _vectorstore = None
 
-def get_llm():
-    """Get or create the LLM instance."""
+def get_llm(api_key: str | None = None):
+    """Get or create the LLM instance.
+
+    If api_key is provided explicitly (per-session), bypass the module cache so
+    different users' keys don't bleed into each other.
+    """
     global _llm
+    key = api_key or os.getenv("GROQ_API_KEY")
+    if not key:
+        raise ValueError("GROQ_API_KEY is not set. Please check your .env file.")
+    if api_key:
+        # ponytail: no per-key cache; ChatGroq is a lightweight config object
+        return ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.2, api_key=key)
     if _llm is None:
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("GROQ_API_KEY is not set. Please check your .env file.")
-        _llm = ChatGroq(
-            model_name="llama-3.3-70b-versatile",
-            temperature=0.2,
-            api_key=api_key
-        )
+        _llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.2, api_key=key)
     return _llm
 
 def get_retriever(k: int = 5):
@@ -81,16 +84,14 @@ def retrieve_context(question: str, k: int = 5):
     
     return docs, context_string
 
-def ask_question(question: str, history: list[dict] | None = None) -> str:
-    """Ask a question and get an answer using RAG.
-    
-    history: list of {"role": "user"|"assistant", "text": str} from previous turns.
-    """
+def stream_answer(question: str, history: list[dict] | None = None, api_key: str | None = None):
+    """Like ask_question but yields text chunks for st.write_stream."""
     docs, context_string = retrieve_context(question)
-    
+    llm = get_llm(api_key)
+
     if history:
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-        sys_template = get_prompt().messages[0][1]
+        sys_template = get_prompt().messages[0].prompt.template
         msgs = [SystemMessage(content=sys_template.replace("{context}", context_string))]
         for h in history[:-1]:
             if h["role"] == "user":
@@ -98,14 +99,41 @@ def ask_question(question: str, history: list[dict] | None = None) -> str:
             else:
                 msgs.append(AIMessage(content=h["text"]))
         msgs.append(HumanMessage(content=question))
-        response = get_llm().invoke(msgs)
+        for chunk in llm.stream(msgs):
+            yield chunk.content
     else:
-        chain = get_prompt() | get_llm()
+        chain = get_prompt() | llm
+        for chunk in chain.stream({"context": context_string, "question": question}):
+            yield chunk.content
+
+
+def ask_question(question: str, history: list[dict] | None = None, api_key: str | None = None) -> str:
+    """Ask a question and get an answer using RAG.
+
+    history: list of {"role": "user"|"assistant", "text": str} from previous turns.
+    api_key: per-session Groq key; bypasses module cache when provided.
+    """
+    docs, context_string = retrieve_context(question)
+    llm = get_llm(api_key)
+
+    if history:
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+        sys_template = get_prompt().messages[0].prompt.template
+        msgs = [SystemMessage(content=sys_template.replace("{context}", context_string))]
+        for h in history[:-1]:
+            if h["role"] == "user":
+                msgs.append(HumanMessage(content=h["text"]))
+            else:
+                msgs.append(AIMessage(content=h["text"]))
+        msgs.append(HumanMessage(content=question))
+        response = llm.invoke(msgs)
+    else:
+        chain = get_prompt() | llm
         response = chain.invoke({
             "context": context_string,
             "question": question
         })
-    
+
     return response.content
 
 # 5. Interactive Q&A loop

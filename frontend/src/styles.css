@@ -42,8 +42,9 @@ body {
   font-family: var(--sans); line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3 { line-height: 1.2; letter-spacing: -0.015em; font-weight: 600; }
+h1, h2, h3 { line-height: 1.2; letter-spacing: -0.015em; font-weight: 600; text-wrap: balance; }
 button, input { font: inherit; }
+::placeholder { color: var(--ink-3); opacity: 1; }
 .wordmark { font-weight: 700; letter-spacing: -0.03em; font-size: 1.1rem; }
 .wordmark span { color: var(--brand); }
 
@@ -212,7 +213,7 @@ button, input { font: inherit; }
 }
 .creds input:focus-visible { border-color: var(--brand); outline: none; }
 .req { color: var(--brand); font-size: 0.72rem; font-weight: 600; }
-.opt { color: var(--ink-3); font-size: 0.72rem; font-weight: 400; }
+.opt { color: var(--ink-2); font-size: 0.72rem; font-weight: 400; }
 .err { color: var(--blocker); font-size: 0.85rem; }
 .stored-note { color: var(--ink-3); font-size: 0.78rem; text-align: center; }
 

@@ -213,10 +213,9 @@ def render_onboarding():
             return
         ok, msg = _validate_token(token)
         if ok:
-            os.environ["DISCORD_BOT_TOKEN"] = token
-            if guild:
-                os.environ["DISCORD_GUILD_ID"] = guild
-            os.environ["GROQ_API_KEY"] = groq_key
+            st.session_state["discord_token"] = token
+            st.session_state["discord_guild_id"] = guild
+            st.session_state["groq_api_key"] = groq_key
             st.session_state["onboarded"] = True
             st.session_state["force_onboard"] = False
             st.success(f"Connected as {msg}.")
@@ -266,8 +265,8 @@ def render_channel_setup():
     st.title("Select channels to sync")
     st.caption("Choose which Discord channels to pull messages from.")
 
-    token = os.environ.get("DISCORD_BOT_TOKEN")
-    guild_id = os.environ.get("DISCORD_GUILD_ID")
+    token = st.session_state.get("discord_token") or os.environ.get("DISCORD_BOT_TOKEN")
+    guild_id = st.session_state.get("discord_guild_id") or os.environ.get("DISCORD_GUILD_ID")
 
     if "available_channels" not in st.session_state:
         with st.spinner("Discovering channels..."):
@@ -378,7 +377,7 @@ def _parse_events(raw_text: str) -> list[dict]:
 def _extract_timeline(messages) -> list[dict]:
     from langchain_core.messages import SystemMessage, HumanMessage
     from generation.llm import get_llm
-    resp = get_llm().invoke([
+    resp = get_llm(st.session_state.get("groq_api_key")).invoke([
         SystemMessage(content=_extract_system()),
         HumanMessage(content=f"Project chat log:\n\n{_messages_block(messages)}"),
     ])
@@ -558,7 +557,7 @@ def render_sidebar(messages):
             st.divider()
             if st.button("Sync now", width="stretch",
                          help="Re-fetch messages from all synced channels."):
-                token = os.environ.get("DISCORD_BOT_TOKEN")
+                token = st.session_state.get("discord_token") or os.environ.get("DISCORD_BOT_TOKEN")
                 for ch in st.session_state.synced_channels:
                     connector = DiscordConnector(
                         channel=ch["name"],
@@ -591,6 +590,7 @@ def render_chat(messages):
         return
 
     from generation import ask_question, retrieve_context
+    from generation.llm import stream_answer
 
     if "chat" not in st.session_state:
         st.session_state.chat = []
@@ -607,7 +607,9 @@ def render_chat(messages):
             with st.spinner("Searching communications…"):
                 history = [{"role": r, "text": c} for r, c in st.session_state.chat[:-1]]
                 docs, _ = retrieve_context(q)
-                answer = ask_question(q, history=history)
+                answer = st.write_stream(stream_answer(
+                    q, history=history,
+                    api_key=st.session_state.get("groq_api_key")))
                 st.markdown(answer)
                 with st.expander(f"{len(docs)} source messages"):
                     for d in docs:
@@ -650,7 +652,12 @@ def main():
         return
 
     if not st.session_state.get("onboarded"):
-        if _db_ready():
+        has_creds = (
+            st.session_state.get("groq_api_key") or os.environ.get("GROQ_API_KEY")
+        ) and (
+            st.session_state.get("discord_token") or os.environ.get("DISCORD_BOT_TOKEN")
+        )
+        if _db_ready() and has_creds:
             store.init_db(DB_PATH)
             st.session_state.onboarded = True
             st.session_state.channels_setup = True
