@@ -44,6 +44,13 @@ def onboard(req: OnboardRequest):
     db_path = str(DATA_DIR / "punch.db")
     faiss_dir = str(DATA_DIR / "faiss_db")
 
+    # Fresh start on every onboard: the DB and FAISS index accumulate across syncs
+    # (upsert only appends), so a new bot would otherwise show the previous bot's
+    # messages too. Clear both before syncing.
+    import shutil
+    Path(db_path).unlink(missing_ok=True)
+    shutil.rmtree(faiss_dir, ignore_errors=True)
+
     from core import store as _store
     _store.init_db(db_path)
 
